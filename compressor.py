@@ -140,7 +140,17 @@ def compress_images():
                    f"Taille Après : {format_bytes(total_dest_size)}\n"
                    f"Gain : {format_bytes(saved_size)} (-{saved_percent:.1f}%)")
     
-    messagebox.showinfo("Bilan de compression", result_text)
+    # On demande à l'utilisateur s'il veut voir les fichiers
+    reponse = messagebox.askyesno("Terminé", f"{result_text}\n\nVoulez-vous ouvrir le dossier de destination ?")
+    
+    if reponse:
+        # Commande spécifique à Windows pour ouvrir l'explorateur
+        try:
+            os.startfile(dest_folder)
+        except AttributeError:
+            # Si jamais tu es sur Mac ou Linux, os.startfile n'existe pas
+            import subprocess
+            subprocess.call(['open', dest_folder]) # Pour Mac
     progress_bar['value'] = 0 # On remet la barre à zéro pour la prochaine fois
 
 # =============================================================================
