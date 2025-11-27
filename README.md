@@ -1,0 +1,1 @@
+Applications Python pour pouvoir compresser des images au formats webp
