@@ -1,4 +1,5 @@
 import os  # Pour interagir avec Windows (lire les dossiers, fichiers, tailles)
+import subprocess  # Pour ouvrir le dossier à la fin
 import tkinter as tk  # La base pour créer la fenêtre
 from tkinter import filedialog, messagebox  # Pour les popups (alertes) et choisir les dossiers
 from tkinter import ttk  # Pour les widgets modernes (notamment la barre de progression)
@@ -43,6 +44,20 @@ def compress_images():
     except ValueError:
         messagebox.showerror("Erreur", "La qualité doit être un chiffre (ex: 80).")
         return
+
+    # --- Récupération des infos de redimensionnement ---
+    # On regarde si la case est cochée (Vrai ou Faux)
+    do_resize = resize_var.get()
+    
+    # On essaie de récupérer la largeur max, par défaut 1920 si vide ou erreur
+    try:
+        max_w = int(max_width_entry.get())
+    except ValueError:
+        if do_resize: # Si on veut resize mais que le chiffre est mauvais
+            messagebox.showerror("Erreur", "La largeur max doit être un chiffre (ex: 1920).")
+            return
+        max_w = 1920 # Valeur de sécurité
+    # -------------------------------------------------------------
 
     # Liste des formats que notre programme accepte de traiter
     supported_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff')
@@ -94,12 +109,28 @@ def compress_images():
             file_path = os.path.join(source_folder, filename)
             
             with Image.open(file_path) as img:
+                
+                # --- LOGIQUE DE REDIMENSIONNEMENT ---
+                # On ne redimensionne QUE SI :
+                # 1. La case est cochée (do_resize est Vrai)
+                # 2. L'image est plus large que la limite (ex: image 4000px > limite 1920px)
+                if do_resize and img.width > max_w:
+                    # Calcul mathématique pour garder les proportions (Ratio)
+                    # Si on divise la largeur par 2, on doit diviser la hauteur par 2
+                    ratio = max_w / float(img.width)
+                    new_height = int(float(img.height) * ratio)
+                    
+                    # On applique le changement de taille
+                    # LANCZOS est un filtre de haute qualité pour réduire sans flou
+                    img = img.resize((max_w, new_height), Image.Resampling.LANCZOS)
+                # -----------------------------------------------
+
                 # 2. On prépare le nouveau nom (on remplace .jpg par .webp)
                 # splitext sépare le nom de l'extension
                 file_name_no_ext = os.path.splitext(filename)[0]
                 output_path = os.path.join(dest_folder, file_name_no_ext + ".webp")
                 
-                # 3. La conversion magique
+                # 3. La conversion magique (img peut être l'originale ou la redimensionnée)
                 # 'optimize=True' demande à la lib de chercher la meilleure compression possible
                 img.save(output_path, 'webp', quality=quality_val, optimize=True)
                 
@@ -149,8 +180,8 @@ def compress_images():
             os.startfile(dest_folder)
         except AttributeError:
             # Si jamais tu es sur Mac ou Linux, os.startfile n'existe pas
-            import subprocess
-            subprocess.call(['open', dest_folder]) # Pour Mac
+            subprocess.call(['open', dest_folder]) 
+            
     progress_bar['value'] = 0 # On remet la barre à zéro pour la prochaine fois
 
 # =============================================================================
@@ -170,10 +201,19 @@ def select_dest():
         dest_entry.delete(0, tk.END)
         dest_entry.insert(0, path)
 
+# --- Fonction pour activer/désactiver le champ largeur ---
+def toggle_width_entry():
+    # Si la case est cochée (True), on active le champ écriture
+    if resize_var.get():
+        max_width_entry.config(state='normal')
+    # Sinon, on le grise (disabled) pour montrer qu'il ne sert pas
+    else:
+        max_width_entry.config(state='disabled')
+
 # --- Initialisation de la fenêtre principale ---
 root = tk.Tk()
 root.title("Compressor WebP - Avec Stats")
-root.geometry("600x550") # Taille de la fenêtre (Largeur x Hauteur)
+root.geometry("600x650")
 
 # Création d'un conteneur principal pour avoir des marges propres (padding)
 main_frame = tk.Frame(root, padx=20, pady=20)
@@ -202,7 +242,29 @@ tk.Button(dest_frame, text="Parcourir...", command=select_dest).pack(side=tk.RIG
 tk.Label(main_frame, text="Qualité de compression (1-100, défaut 80) :", anchor="w").pack(fill="x")
 quality_entry = tk.Entry(main_frame)
 quality_entry.insert(0, "80") # On pré-remplit avec 80
-quality_entry.pack(anchor="w", pady=(0, 20))
+quality_entry.pack(anchor="w", pady=(0, 10))
+
+# --- NOUVEAU BLOC 3.5 : Options de Redimensionnement ---
+resize_frame = tk.LabelFrame(main_frame, text="Options de redimensionnement", padx=10, pady=10)
+resize_frame.pack(fill="x", pady=10)
+
+# La variable qui retient si la case est cochée ou non
+resize_var = tk.BooleanVar() 
+# La case à cocher. Quand on clique, elle lance 'toggle_width_entry'
+chk_resize = tk.Checkbutton(resize_frame, text="Redimensionner les grandes images ?", 
+                            variable=resize_var, command=toggle_width_entry)
+chk_resize.pack(anchor="w")
+
+# Le petit cadre pour aligner le texte et le champ
+width_frame = tk.Frame(resize_frame)
+width_frame.pack(fill="x", pady=5)
+
+tk.Label(width_frame, text="Largeur Max (pixels) :").pack(side=tk.LEFT)
+max_width_entry = tk.Entry(width_frame, width=10)
+max_width_entry.insert(0, "1920") # On propose 1920 par défaut (Full HD)
+max_width_entry.config(state='disabled') # Désactivé au démarrage
+max_width_entry.pack(side=tk.LEFT, padx=10)
+# -------------------------------------------------------
 
 # --- BLOC 4 : Les Statistiques (LabelFrame = Cadre avec titre) ---
 stats_frame = tk.LabelFrame(main_frame, text="Statistiques en temps réel", padx=10, pady=10)
